@@ -43,19 +43,24 @@ def list_repos(
     page = 1
     repo_dict = {}
     while True:
-        response = requests.get(f"{url}&page={page}", headers=headers)
-        if response.status_code == 200:
+        try:
+            response = requests.get(f"{url}&page={page}", headers=headers)
+            response.raise_for_status()  # Raises an HTTPError for bad responses (4xx or 5xx)
+
             repos = response.json()
             if not repos:
-                break
+                break  # No more repos, exit the loop
+
             for repo in repos:
                 repo_dict[repo["name"]] = repo["clone_url"]
             page += 1
-        else:
-            print(
-                f"Error: Could not retrieve repositories. Status code: {response.status_code}"
-            )
-            print(response.json())
+        except requests.exceptions.HTTPError as e:
+            print(f"Error retrieving repositories: {e}")
+            print(f"Response text: {response.text}")
+            break
+        except requests.exceptions.RequestException as e:
+            print(f"A network error occurred: {e}")
+            break
     return repo_dict
 
 
@@ -75,33 +80,59 @@ def mirror_repos(
         os.makedirs(folder)
 
     for repo_name, clone_url in repos.items():
-        print(f"Cloning {repo_name}...")
-        if token:
-            clone_url = clone_url.replace("https://", f"https://{token}@")
-        repo_path = os.path.join(folder, repo_name + ".git")
-        if os.path.exists(repo_path):
-            print(f"Repository {repo_name} already exists. Fetching updates...")
+        try:
+            print(f"\nProcessing '{repo_name}'...")
             if token:
-                remote_url = subprocess.check_output(
-                    ["git", "config", "--get", "remote.origin.url"],
-                    cwd=repo_path,
-                ).decode()
-                if token not in remote_url:
-                    subprocess.run(
-                        [
-                            "git",
-                            "remote",
-                            "set-url",
-                            "origin",
-                            clone_url,
-                        ],
+                clone_url = clone_url.replace("https://", f"https://{token}@")
+            repo_path = os.path.join(folder, repo_name + ".git")
+
+            if os.path.exists(repo_path):
+                print(
+                    f"Repository already exists. Fetching updates for '{repo_name}'..."
+                )
+                if token:
+                    # Check if the remote URL needs to be updated with the token
+                    remote_url = subprocess.check_output(
+                        ["git", "config", "--get", "remote.origin.url"],
                         cwd=repo_path,
-                    )
-            subprocess.run(["git", "fetch", "--all"], cwd=repo_path)
-        else:
-            print(f"Mirror cloning {repo_name} into {repo_path}...")
-            subprocess.run(["git", "clone", "--mirror", clone_url, repo_path])
-        break
+                        text=True,
+                    ).strip()
+                    if token not in remote_url:
+                        print("Updating remote URL with token.")
+                        subprocess.run(
+                            ["git", "remote", "set-url", "origin", clone_url],
+                            cwd=repo_path,
+                            check=True,
+                            text=True,
+                        )
+                subprocess.run(
+                    [
+                        "git",
+                        "fetch",
+                        "--all",
+                        "--prune",
+                        "--progress",
+                    ],
+                    cwd=repo_path,
+                    check=True,
+                    text=True,
+                )
+            else:
+                print(f"Mirror cloning '{repo_name}' into '{repo_path}'...")
+                subprocess.run(
+                    ["git", "clone", "--mirror", "--progress", clone_url, repo_path],
+                    check=True,
+                    text=True,
+                )
+        except subprocess.CalledProcessError:
+            print(
+                f"  ERROR: Failed to process repository '{repo_name}'. Git command failed. See output above for details."
+            )
+        except FileNotFoundError:
+            print(
+                "  ERROR: 'git' command not found. Is Git installed and in your PATH?"
+            )
+            break  # Stop if git is not installed
 
 
 if __name__ == "__main__":
@@ -131,7 +162,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--folder",
-        default="git_repos",
+        default="github_sync/git_repos",
         help="Local folder to save the repositories.",
         type=str,
     )
@@ -165,3 +196,48 @@ if __name__ == "__main__":
 # GH_USERNAME=username
 # GH_ORG=organization
 # GH_TOKEN=token
+
+
+# def mirror_repos(
+#     repos: Dict[str, str], folder: str, token: Optional[str] = None
+# ) -> None:
+#     """
+#     Mirror clones the given repositories into the specified folder.
+#     If the repository already exists, it fetches all the changes.
+
+#     Args:
+#         repos (dict): A dictionary of repository names and their clone URLs.
+#         folder (str): The local folder to save the repositories.
+#         token (str, optional): The GitHub personal access token. Defaults to None.
+#     """
+#     if not os.path.exists(folder):
+#         os.makedirs(folder)
+
+#     for repo_name, clone_url in repos.items():
+#         print(f"Cloning {repo_name}...")
+#         if token:
+#             clone_url = clone_url.replace("https://", f"https://{token}@")
+#         repo_path = os.path.join(folder, repo_name + ".git")
+#         if os.path.exists(repo_path):
+#             print(f"Repository {repo_name} already exists. Fetching updates...")
+#             if token:
+#                 remote_url = subprocess.check_output(
+#                     ["git", "config", "--get", "remote.origin.url"],
+#                     cwd=repo_path,
+#                 ).decode()
+#                 if token not in remote_url:
+#                     subprocess.run(
+#                         [
+#                             "git",
+#                             "remote",
+#                             "set-url",
+#                             "origin",
+#                             clone_url,
+#                         ],
+#                         cwd=repo_path,
+#                     )
+#             subprocess.run(["git", "fetch", "--all"], cwd=repo_path)
+#         else:
+#             print(f"Mirror cloning {repo_name} into {repo_path}...")
+#             subprocess.run(["git", "clone", "--mirror", clone_url, repo_path])
+#         break
