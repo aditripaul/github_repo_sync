@@ -172,8 +172,18 @@ if __name__ == "__main__":
         help="The GitHub personal access token. If not provided, it will look for GH_TOKEN in your environment variables or a .env file.",
         type=str,
     )
+    parser.add_argument(
+        "--user-only",
+        action="store_true",
+        help="Force syncing for the user, ignoring any GH_ORG set in the environment.",
+    )
 
     args = parser.parse_args()
+
+    # If --user-only is specified, ignore the organization from the environment
+    # and sync for the user instead. This provides a convenient override.
+    if args.user_only:
+        args.org = None
 
     if not args.username:
         parser.error(
@@ -181,63 +191,17 @@ if __name__ == "__main__":
         )
 
     repos = list_repos(args.username, args.repo_type, args.token, args.org)
-    # print(repos)
 
     if args.org:
-        args.folder = f"{args.folder}_{args.org}"
+        target_folder = f"{args.folder}_{args.org}"
     else:
-        args.folder = f"{args.folder}_{args.username}"
+        target_folder = f"{args.folder}_{args.username}"
 
     print(f"{len(repos)} github_repos found.")
     if repos:
-        mirror_repos(repos, args.folder, args.token)
+        mirror_repos(repos, target_folder, args.token)
 
 # example .env
 # GH_USERNAME=username
 # GH_ORG=organization
 # GH_TOKEN=token
-
-
-# def mirror_repos(
-#     repos: Dict[str, str], folder: str, token: Optional[str] = None
-# ) -> None:
-#     """
-#     Mirror clones the given repositories into the specified folder.
-#     If the repository already exists, it fetches all the changes.
-
-#     Args:
-#         repos (dict): A dictionary of repository names and their clone URLs.
-#         folder (str): The local folder to save the repositories.
-#         token (str, optional): The GitHub personal access token. Defaults to None.
-#     """
-#     if not os.path.exists(folder):
-#         os.makedirs(folder)
-
-#     for repo_name, clone_url in repos.items():
-#         print(f"Cloning {repo_name}...")
-#         if token:
-#             clone_url = clone_url.replace("https://", f"https://{token}@")
-#         repo_path = os.path.join(folder, repo_name + ".git")
-#         if os.path.exists(repo_path):
-#             print(f"Repository {repo_name} already exists. Fetching updates...")
-#             if token:
-#                 remote_url = subprocess.check_output(
-#                     ["git", "config", "--get", "remote.origin.url"],
-#                     cwd=repo_path,
-#                 ).decode()
-#                 if token not in remote_url:
-#                     subprocess.run(
-#                         [
-#                             "git",
-#                             "remote",
-#                             "set-url",
-#                             "origin",
-#                             clone_url,
-#                         ],
-#                         cwd=repo_path,
-#                     )
-#             subprocess.run(["git", "fetch", "--all"], cwd=repo_path)
-#         else:
-#             print(f"Mirror cloning {repo_name} into {repo_path}...")
-#             subprocess.run(["git", "clone", "--mirror", clone_url, repo_path])
-#         break
