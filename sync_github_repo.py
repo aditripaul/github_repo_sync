@@ -1,3 +1,16 @@
+# ------------------------------------------------------------------------------
+#
+#  sync_github_repo.py
+#
+#  This script mirrors all repositories from a Github repositories to a local
+#  directory. It can authenticate using an Atlassian API token and can clone
+#  repositories via HTTPS or SSH.
+#
+#  Author: Aditri Paul
+#  License: GNU GPLv3
+#
+# ------------------------------------------------------------------------------
+
 import argparse
 import os
 import subprocess
